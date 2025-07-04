@@ -1,7 +1,7 @@
-from enum import StrEnum
+from opi.models.string_enum import StringEnum
 
 
-class Element(StrEnum):
+class Element(StringEnum):
     """
     Class that stores a list of all elements.
     When an element is required as an input, it is to be selected from this class to avoid user error
