@@ -527,18 +527,26 @@ class Output:
         structure = Structure(atoms)
         return structure
 
-    def get_final_energy(self) -> StrictFiniteFloat | None:
+    def get_final_energy(self, *, index: int = -1) -> StrictFiniteFloat | None:
         """
         Easy access to the final single point energy.
+
+        Parameters
+        ----------
+        index : int, default: -1
+            Index of the geometry for which the energy should be returned. The default -1 refers to the final geometry.
+            Silently ignores if the requested index is not available and returns None.
 
         Returns
         ----------
         final_energy: StrictFiniteFloat | None
-            Returns the final energy of the ORCA calculation or None if there is none in the output.
+            Returns the final energy of the ORCA calculation or None if there is none in the output for the requested index.
         """
 
         # > Get the final energy
-        final_energy = self._safe_get("results_properties", "single_point_data", "finalenergy")
+        final_energy = self._safe_get(
+            "results_properties", "geometries", index, "single_point_data", "finalenergy"
+        )
 
         if final_energy is not None:
             final_energy = cast(StrictFiniteFloat, final_energy)
@@ -553,12 +561,13 @@ class Output:
         ----------
         index : int, default: -1
             Index of the geometry for which the energy should be returned. The default -1 refers to the final geometry.
+            Silently ignores if the requested index is not available and returns None.
 
         Returns
         -------
         energy_dict : dict[str, Energy] | None
             Dictionary where keys identify the energy type. If multiple energies of the same type are present, an index is
-            appended after the first one, e.g., SCF, SCF_1, SCF_2, etc. If no energy is available None is returned.
+            appended after the first one, e.g., SCF, SCF_1, SCF_2, etc. If no energy for the requested index is available None is returned.
 
         Notes
         -----
