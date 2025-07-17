@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, cast
 from warnings import warn
 
-from pydantic import StrictStr
+from pydantic import StrictInt, StrictStr
 
 from opi.execution.core import Runner
 from opi.input.structures import Atom, Coordinates, Structure
@@ -17,8 +17,10 @@ from opi.output.grepper.recipes import (
     has_scf_converged,
     has_terminated_normally,
 )
+from opi.output.hftypes import Hftypes
 from opi.output.models.base.strict_types import StrictFiniteFloat, StrictPositiveInt
 from opi.output.models.json.gbw.gbw_results import GbwResults
+from opi.output.models.json.gbw.properties.mos import MO
 from opi.output.models.json.property.properties.energy import Energy
 from opi.output.models.json.property.properties.energy_list import EnergyList
 from opi.output.models.json.property.property_results import (
@@ -26,7 +28,7 @@ from opi.output.models.json.property.property_results import (
 )
 from opi.utils.misc import check_minimal_version, lowercase
 from opi.utils.orca_version import OrcaVersion
-from opi.utils.units import AU_TO_ANGST
+from opi.utils.units import AU_TO_ANGST, AU_TO_EV
 
 
 class Output:
@@ -419,113 +421,102 @@ class Output:
                 return None
         return current
 
-    def _get_cartesians(
-        self, index: int
-    ) -> list[tuple[StrictStr, StrictFiniteFloat, StrictFiniteFloat, StrictFiniteFloat]] | None:
+    def get_hftype(self) -> Hftypes | None:
         """
-        Returns cartesian coordinates from the output object for a specified index.
-
-        Parameters
-        ----------
-        index : int
-            index of geometry to return.
+        Get the HFType from GBW json file.
 
         Returns
-        ----------
-        cartesians: list[tuple[StrictStr, StrictFiniteFloat, StrictFiniteFloat, StrictFiniteFloat]] | None
-            List containing the cartesian coordinates or None.
+        -------
+        hftype : Hftypes | None
         """
-        # > Safely get the cartesian coordinates
-        cartesians = self._safe_get(
-            "results_properties", "geometries", index, "geometry", "coordinates", "cartesians"
-        )
-        # > Cast them into the correct type
-        if cartesians is not None:
-            cartesians = cast(
-                list[tuple[StrictStr, StrictFiniteFloat, StrictFiniteFloat, StrictFiniteFloat]],
-                cartesians,
-            )
+        hftype = self._safe_get("results_gbw", "molecule", "hftyp")
+        if hftype is not None:
+            hftype = cast(str, hftype)
+            try:
+                hftype = Hftypes(hftype)
+                return hftype
+            except ValueError:
+                return None
+        else:
+            return None
 
-        return cartesians
-
-    def _get_fragments(self, index: int, /) -> list[list[StrictPositiveInt]] | None:
+    def get_charge(self) -> StrictInt | None:
         """
-        Returns fragment ids from the output object for a specified geometry index.
-
-        Parameters
-        ----------
-        index : int
-            index of geometry to return.
+        Get the molecular charge from the json properties file.
 
         Returns
-        ----------
-        fragments: list[tuple[StrictStr, StrictFiniteFloat, StrictFiniteFloat, StrictFiniteFloat]] | None
-            List containing the cartesian coordinates or None.
+        -------
+        charge : int | None
         """
-        # > Safely get the fragment IDs
-        fragments = self._safe_get(
-            "results_properties", "geometries", index, "geometry", "fragments"
-        )
-        # > Cast them into the correct type
-        if fragments:
-            fragments = cast(
-                list[list[StrictPositiveInt]],
-                fragments,
-            )
+        charge = self._safe_get("results_properties", "calculation_info", "charge")
 
-        return fragments
+        if charge is not None:
+            charge = cast(int, charge)
 
-    def get_structure(self, *, index: int = -1, with_fragments: bool = True) -> Structure:
+        return charge
+
+    def get_mult(self) -> StrictPositiveInt | None:
         """
-        Returns structure from ORCA job as Structure object (by default the final structure).
-
-        Parameters
-        ----------
-        index : int, default: -1
-            index of geometry to return. The default -1 refers to the final geometry.
-        with_fragments : bool, default: True
-            whether the fragment IDs should be added as well to the structure (if available)
+        Get the molecular electron multiplicity from the json properties file.
 
         Returns
-        ----------
-        structure: Structure
-            Returns structure object generated from the output for the given index.
-
-        Raises
-        ----------
-        ValueError
-            If no geometry with the requested index is available.
+        -------
+        mult : int | None
         """
+        mult = self._safe_get("results_properties", "calculation_info", "mult")
 
-        atoms: list[Atom] = []
-        # > Get Cartesian coordinates
-        cartesians = self._get_cartesians(index)
+        if mult is not None:
+            mult = cast(int, mult)
 
-        if cartesians is None:
-            raise ValueError(
-                f"Requested Cartesian coordinates for geometry with index {index} are not available."
-            )
+        return mult
 
-        for line in cartesians:
-            elem, x_au, y_au, z_au = line
-            # > Get coordinates and convert to angstrom
-            x = x_au * AU_TO_ANGST
-            y = y_au * AU_TO_ANGST
-            z = z_au * AU_TO_ANGST
-            # > Generate atom and append to list
-            atom = Atom(element=elem, coordinates=Coordinates((x, y, z)))
-            atoms.append(atom)
+    def get_nelectrons(
+        self, *, spin_resolved: bool = False
+    ) -> tuple[int, int | None] | tuple[None, None]:
+        """
+        Get the number of electrons from property results. If requested separated into alpha and beta.
 
-        if with_fragments:
-            # > Get fragment IDs
-            fragments = self._get_fragments(index)
+        Parameters
+        -------
+        spin_resolved: bool, default=False
+            If True, the numbers of electrons are returned as alpha and beta electrons separately, if False,
+            the total number of electrons is returned.
 
-            if fragments:
-                for atom, frag in zip(atoms, fragments):
-                    atom.fragment_id = frag[0]
+        Returns
+        -------
+        nalpha : int | None
+            * None: if no electrons could be retrieved, or no multiplicity for spin resolution is available.
+            * int:
+                * if `spin_resolved == False`, the total number of electrons
+                * if `spin_resolved == True`, the number of alpha electrons.
+        nbeta : int | None
+            * None:
+                * if no electrons could be retrieved, or no multiplicity for spin resolution is available.
+                * if `spin_resolved == False`
+            * int : number of beta electrons (requires `spin_resolved == True`)
+        """
+        nel = self._safe_get("results_properties", "calculation_info", "numofelectrons")
 
-        structure = Structure(atoms)
-        return structure
+        if nel is not None:
+            nel = cast(int, nel)
+        else:
+            return None, None
+
+        # > Return total number of electrons
+        if not spin_resolved:
+            return nel, None
+
+        # > Get the electron spin multiplicity
+        mult = self.get_mult()
+        if mult is None:
+            return None, None
+
+        # > Calculate amount of alpha and beta electrons
+        nalpha = nel // 2 + (mult - 1)
+        nbeta = nel - nalpha
+
+        # > Return spin resolved number of electrons
+        return nalpha, nbeta
 
     def get_final_energy(self, *, index: int = -1) -> StrictFiniteFloat | None:
         """
@@ -605,3 +596,307 @@ class Output:
             energy_dict[key] = energy
 
         return energy_dict
+
+    def get_gradient(self, *, index: int = -1) -> list[StrictFiniteFloat] | None:
+        """
+        Easy access to the nuclear gradient
+
+        Parameters
+        ----------
+        index : int, default: -1
+            index of geometry for which the gradient is to be returned. The default -1 refers to the final geometry.
+            **Attention:** In a normal geometry optimization ORCA does not calculate the gradient for the final
+            geometry, so the default index will return None. You can request the gradient for the structure one step
+            before the final one with the index -2. For most intents and purposes, the last and second to last
+            geometries, energies and gradients are the same within the given tolerances.
+
+        Returns
+        ----------
+        list[StrictFiniteFloat] | None
+            Returns nuclear gradient (packed in order x1, y1, z1, x2 y2, z2, ... in Eh/Bohr) for the given index
+            or None if it cannot be obtained.
+        """
+        # > Safely get the gradient
+        gradient = self._safe_get(
+            "results_properties", "geometries", index, "nuclear_gradient", 0, "grad"
+        )
+
+        # > Cast them into the correct type
+        if gradient is not None:
+            gradient = cast(
+                list[list[StrictFiniteFloat]],
+                gradient,
+            )
+            flat = [inner[0] for inner in gradient]
+            gradient = flat
+
+        return gradient
+
+    def get_structure(self, *, index: int = -1, with_fragments: bool = True) -> Structure | None:
+        """
+        Returns structure from ORCA job as Structure object (by default the final structure).
+        Silently returns None of no structure is available.
+
+        Parameters
+        ----------
+        index : int, default: -1
+            index of geometry to return. The default -1 refers to the final geometry.
+        with_fragments : bool, default: True
+            whether the fragment IDs should be added as well to the structure (if available)
+
+        Returns
+        ----------
+        structure: Structure | None
+            Returns structure object generated from the output for the given index or None if no structure is available.
+        """
+
+        atoms: list[Atom] = []
+        # > Get Cartesian coordinates
+        cartesians = self._get_cartesians(index)
+
+        if cartesians is None:
+            return None
+
+        for line in cartesians:
+            elem, x_au, y_au, z_au = line
+            # > Get coordinates and convert to angstrom
+            x = x_au * AU_TO_ANGST
+            y = y_au * AU_TO_ANGST
+            z = z_au * AU_TO_ANGST
+            # > Generate atom and append to list
+            atom = Atom(element=elem, coordinates=Coordinates((x, y, z)))
+            atoms.append(atom)
+
+        if with_fragments:
+            # > Get fragment IDs
+            fragments = self._get_fragments(index)
+
+            if fragments:
+                for atom, frag in zip(atoms, fragments):
+                    atom.fragment_id = frag[0]
+
+        structure = Structure(atoms)
+
+        # > Add charge data
+        charge = self.get_charge()
+        if charge is not None:
+            structure.charge = charge
+
+        # > Add multiplicity data
+        mult = self.get_mult()
+        if mult is not None:
+            structure.multiplicity = mult
+        return structure
+
+    def _get_cartesians(
+        self, index: int, /
+    ) -> list[tuple[StrictStr, StrictFiniteFloat, StrictFiniteFloat, StrictFiniteFloat]] | None:
+        """
+        Returns cartesian coordinates from the output object for a specified index.
+
+        Parameters
+        ----------
+        index : int
+            index of geometry to return.
+
+        Returns
+        ----------
+        cartesians: list[tuple[StrictStr, StrictFiniteFloat, StrictFiniteFloat, StrictFiniteFloat]] | None
+            List containing the cartesian coordinates or None.
+        """
+        # > Safely get the cartesian coordinates
+        cartesians = self._safe_get(
+            "results_properties", "geometries", index, "geometry", "coordinates", "cartesians"
+        )
+        # > Cast them into the correct type
+        if cartesians is not None:
+            cartesians = cast(
+                list[tuple[StrictStr, StrictFiniteFloat, StrictFiniteFloat, StrictFiniteFloat]],
+                cartesians,
+            )
+
+        return cartesians
+
+    def _get_fragments(self, index: int, /) -> list[list[StrictPositiveInt]] | None:
+        """
+        Returns fragment ids from the output object for a specified geometry index.
+
+        Parameters
+        ----------
+        index : int
+            index of geometry to return.
+
+        Returns
+        ----------
+        fragments: list[tuple[StrictStr, StrictFiniteFloat, StrictFiniteFloat, StrictFiniteFloat]] | None
+            List containing the cartesian coordinates or None.
+        """
+        # > Safely get the fragment IDs
+        fragments = self._safe_get(
+            "results_properties", "geometries", index, "geometry", "fragments"
+        )
+        # > Cast them into the correct type
+        if fragments:
+            fragments = cast(
+                list[list[StrictPositiveInt]],
+                fragments,
+            )
+
+        return fragments
+
+    def get_mos(self) -> dict[str, list[MO]] | None:
+        """
+        Returns a dictionary with list(s) of molecular orbitals.
+
+        Returns
+        -------
+        dict[str, list[MO]] | None
+            Dictionary containing the molecular orbitals as lists.
+
+        Notes
+        -----
+        The keys are:
+            - **mos**     : RHF/ROHF orbitals
+            - **alpha**   : UHF alpha orbitals
+            - **beta**    : UHF beta orbitals
+        """
+        molecular_orbitals = self._safe_get("results_gbw", "molecule", "molecularorbitals", "mos")
+        if molecular_orbitals is not None:
+            mos = {}
+            cast(list[MO], molecular_orbitals)
+            # > Get the hftype (e.g. rhf / uhf)
+            hftype = self.get_hftype()
+            # > Sort for UHF
+            if hftype == Hftypes.UHF:
+                offset = len(molecular_orbitals) // 2
+                mos["alpha"] = molecular_orbitals[:offset]
+                mos["beta"] = molecular_orbitals[offset:]
+            else:
+                mos["mos"] = molecular_orbitals
+            return mos
+        else:
+            return None
+
+    @staticmethod
+    def _find_homo(mo_list: list[MO]) -> int | None:
+        """
+        Find and return the index of the highest occupied molecular orbital HOMO in energy ordered list of MOs.
+
+        Parameter
+        -------
+        mo_list: list[MO]
+
+        Returns
+        -------
+        int | None
+            index of HOMO, or None, if the HOMO could not be found.
+        """
+
+        # > Search for the index of the LUMO
+        index = next((i for i, mo in enumerate(mo_list) if mo.occupancy == 0), None)
+        if index is not None and index >= 1:
+            # > HOMO is LUMO-1
+            index -= 1
+            return index
+
+        return None
+
+    def get_homo(self) -> MO | None:
+        """
+        Returns the highest occupied molecular orbital (HOMO, or SOMO for UHF)
+
+        Returns
+        -------
+        MO | None
+            Returns the HOMO (or SOMO), or None, if the HOMO could not be found
+        """
+        homo: MO | None = None
+        mos = self.get_mos()
+
+        if mos is not None:
+            for channel in mos:
+                # > find homo for spin channel
+                index = self._find_homo(mos[channel])
+                if index is not None:
+                    channel_homo = mos[channel][index]
+                    if channel_homo.orbitalenergy is not None:
+                        # > Check if spin channel homo is the actual homo
+                        if homo is None:
+                            homo = channel_homo
+                        else:
+                            # > Compare energies and pick highest
+                            if (
+                                homo.orbitalenergy is not None
+                                and channel_homo.orbitalenergy > homo.orbitalenergy
+                            ):
+                                homo = channel_homo
+        return homo
+
+    @staticmethod
+    def _find_lumo(mo_list: list[MO]) -> int | None:
+        """
+        Find and return the index of the lowest unoccupied molecular orbital LUMO in energy ordered list of MOs.
+
+        Parameter
+        -------
+        mo_list: list[MO]
+
+        Returns
+        -------
+        int | None
+            index of LUMO, or None, if the LUMO could not be found.
+        """
+        index = next((i for i, mo in enumerate(mo_list) if mo.occupancy == 0), None)
+        if index is not None:
+            return index
+
+        return None
+
+    def get_lumo(self) -> MO | None:
+        """
+        Returns the lowest unoccupied molecular orbital (LUMO)
+
+        Returns
+        -------
+        MO | None
+            Returns the LUMO, or None, if the LUMO could not be found
+        """
+        lumo: MO | None = None
+        mos = self.get_mos()
+
+        if mos is not None:
+            for channel in mos:
+                # > find lumo for spin channel
+                index = self._find_lumo(mos[channel])
+                if index is not None:
+                    channel_lumo = mos[channel][index]
+                    if channel_lumo.orbitalenergy is not None:
+                        # > Check if spin channel lumo is the actual lumo
+                        if lumo is None:
+                            lumo = channel_lumo
+                        else:
+                            # > pick lowest lumo
+                            if (
+                                lumo.orbitalenergy is not None
+                                and channel_lumo.orbitalenergy < lumo.orbitalenergy
+                            ):
+                                lumo = channel_lumo
+        return lumo
+
+    def get_hl_gap(self) -> float | None:
+        """
+        Returns the HOMO-LUMO gap in eV
+
+        Returns
+        -------
+        float | None
+            Returns the HOMO-LUMO gap in eV or None if the gap could not be obtained.
+        """
+        homo = self.get_homo()
+        lumo = self.get_lumo()
+
+        if homo is not None and lumo is not None:
+            if homo.orbitalenergy is not None and lumo.orbitalenergy is not None:
+                return (lumo.orbitalenergy - homo.orbitalenergy) * AU_TO_EV
+
+        return None
