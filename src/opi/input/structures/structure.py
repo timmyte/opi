@@ -1,14 +1,16 @@
 import re
 from os import PathLike
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Iterable, Sequence, cast
+from typing import Any, Iterable, Sequence, cast
 
 import numpy as np
 import numpy.typing as npt
 
 # > RDKIT
-from rdkit.Chem import AddHs, MolFromSmiles, MolFromXYZBlock
+from rdkit.Chem import Mol as RdkitMol
 from rdkit.Chem.rdDistGeom import EmbedMolecule
+from rdkit.Chem.rdmolfiles import MolFromSmiles, MolFromXYZBlock  # type: ignore
+from rdkit.Chem.rdmolops import AddHs
 
 from opi.input.structures.atom import (
     Atom,
@@ -21,10 +23,6 @@ from opi.input.structures.coordinates import Coordinates
 from opi.utils.element import Element
 
 __all__ = ("Structure",)
-
-
-if TYPE_CHECKING:
-    from rdkit.Chem import Mol as RdkitMol
 
 
 class Structure:
@@ -496,7 +494,7 @@ class Structure:
         """
 
         # Compute 3D coordinates if needed
-        if not mol.GetConformer().Is3D():
+        if not mol.GetConformer().Is3D():  # type: ignore
             res = EmbedMolecule(mol)
             if res < 0:
                 raise RuntimeError("Failed to embed molecule")
@@ -509,12 +507,12 @@ class Structure:
         # so to obtain the molecular charge and multiplicity we have to sum them
         rd_charge: int = 0
         rd_radical_electrons: int = 0
-        for atom in mol.GetAtoms():  # type: ignore
+        for atom in mol.GetAtoms():
             idx = atom.GetIdx()
-            element = atom.GetSymbol()
-            rd_charge += atom.GetFormalCharge()
-            rd_radical_electrons += atom.GetNumRadicalElectrons()
-            pos = conformer.GetAtomPosition(idx)
+            element = atom.GetSymbol()  # type: ignore
+            rd_charge += atom.GetFormalCharge()  # type: ignore
+            rd_radical_electrons += atom.GetNumRadicalElectrons()  # type: ignore
+            pos = conformer.GetAtomPosition(idx)  # type: ignore
             atoms.append(Atom(element=Element(element), coordinates=pos))
 
         # multiplicity is the number of open-shell/radical electrons + 1
@@ -546,7 +544,7 @@ class Structure:
         """
 
         xyz_block = structure.to_xyz_block()
-        return MolFromXYZBlock(xyz_block)
+        return cast(RdkitMol, MolFromXYZBlock(xyz_block))
 
     def __len__(self) -> int:
         return len(self.atoms)
