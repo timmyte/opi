@@ -30,6 +30,11 @@ nox.options.reuse_existing_virtualenvs = True
 # > Using "uv" instead of "venv" as default backend
 nox.options.default_venv_backend = "uv"
 
+# > Get supported Python versions from pyproject.toml.
+PYPROJECT = nox.project.load_toml("pyproject.toml")
+# > Version are read from: "Programming Language :: Python ::"
+PYTHON_VERSIONS = nox.project.python_versions(PYPROJECT)
+
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #                                                   NOX SESSIONS
@@ -157,3 +162,11 @@ def dead_code(session):
         "dead-code",
     )
     session.run("vulture")
+
+
+# ////////////////////////////////////////////////////////
+# ///         PYTHON VERSION COMPATIBILITY            ///
+# //////////////////////////////////////////////////////
+@nox.session(default=False, python=PYTHON_VERSIONS)
+def python_comp(session):
+    type_check(session)
