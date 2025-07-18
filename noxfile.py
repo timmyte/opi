@@ -44,9 +44,9 @@ def tests(session):
     session.run_install(
         "uv",
         "sync",
+        "--active",
         "--group",
         "tests",
-        env={"UV_PROJECT_ENVIRONMENT": session.virtualenv.location},
     )
     session.run("pytest", *session.posargs)
 
@@ -59,10 +59,10 @@ def type_check(session):
     session.run_install(
         "uv",
         "sync",
+        "--active",
         "--group",
         "type_check",
         "--all-extras",
-        env={"UV_PROJECT_ENVIRONMENT": session.virtualenv.location},
     )
     session.run("mypy")
 
@@ -75,9 +75,9 @@ def remove_unused_imports(session):
     session.run_install(
         "uv",
         "sync",
+        "--active",
         "--group",
         "lint",
-        env={"UV_PROJECT_ENVIRONMENT": session.virtualenv.location},
     )
     # > Sorting imports with ruff instead of isort
     session.run("ruff", "check", "--select", "F401", "--fix")
@@ -91,9 +91,9 @@ def sort_imports(session):
     session.run_install(
         "uv",
         "sync",
+        "--active",
         "--group",
         "lint",
-        env={"UV_PROJECT_ENVIRONMENT": session.virtualenv.location},
     )
     # > Sorting imports with ruff instead of isort
     session.run("ruff", "check", "--select", "I", "--fix")
@@ -107,9 +107,9 @@ def lint(session):
     session.run_install(
         "uv",
         "sync",
+        "--active",
         "--group",
         "lint",
-        env={"UV_PROJECT_ENVIRONMENT": session.virtualenv.location},
     )
     session.run("ruff", "check")
 
@@ -122,9 +122,9 @@ def format_code(session):
     session.run_install(
         "uv",
         "sync",
+        "--active",
         "--group",
         "lint",
-        env={"UV_PROJECT_ENVIRONMENT": session.virtualenv.location},
     )
     session.run("ruff", "format")
 
@@ -137,9 +137,9 @@ def spell_check(session):
     session.run_install(
         "uv",
         "sync",
+        "--active",
         "--group",
         "spell-check",
-        env={"UV_PROJECT_ENVIRONMENT": session.virtualenv.location},
     )
     session.run("codespell", "src/opi")
 
@@ -152,8 +152,8 @@ def dead_code(session):
     session.run_install(
         "uv",
         "sync",
+        "--active",
         "--group",
         "dead-code",
-        env={"UV_PROJECT_ENVIRONMENT": session.virtualenv.location},
     )
     session.run("vulture")
