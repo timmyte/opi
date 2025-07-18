@@ -4,9 +4,9 @@ import os
 # > External packages
 import nox
 
-# > Don't update lock file when setting up virtual envs.
+# > Don't update lock file when setting up virtual envs, instead take as-is.
 os.environ.update({"UV_FROZEN": "1"})
-# > Disable automatic donwload of Python distributions
+# > Disable automatic download of Python distributions
 os.environ.update({"UV_PYTHON_DOWNLOADS": "never"})
 # > Making sure Nox session only see their packages and not any globally installed packages.
 os.environ.pop("PYTHONPATH", None)
@@ -54,7 +54,7 @@ def tests(session):
 # //////////////////////////////////////////
 # ///     STATIC TYPE CHECKING: mypy     ///
 # //////////////////////////////////////////
-@nox.session(tags=["static_check"])
+@nox.session
 def type_check(session):
     session.run_install(
         "uv",
