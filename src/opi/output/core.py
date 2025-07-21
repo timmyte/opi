@@ -12,13 +12,18 @@ from pydantic import StrictInt, StrictStr
 
 from opi.execution.core import Runner
 from opi.input.structures import Atom, Coordinates, Structure
+from opi.output.cube import CubeOutput
 from opi.output.grepper.recipes import (
     has_geometry_optimization_converged,
     has_scf_converged,
     has_terminated_normally,
 )
 from opi.output.hftypes import Hftypes
-from opi.output.models.base.strict_types import StrictFiniteFloat, StrictPositiveInt
+from opi.output.models.base.strict_types import (
+    StrictFiniteFloat,
+    StrictNonNegativeInt,
+    StrictPositiveInt,
+)
 from opi.output.models.json.gbw.gbw_results import GbwResults
 from opi.output.models.json.gbw.properties.mos import MO
 from opi.output.models.json.property.properties.energy import Energy
@@ -377,6 +382,196 @@ class Output:
             return has_geometry_optimization_converged(outfile)
         except FileNotFoundError:
             return False
+
+    def run_orca_plot(
+        self, stdin_list: list[str], *, suffix: str = ".gbw", timeout: int = -1
+    ) -> None:
+        """
+        Executes orca_plot and passes it an input list stdin_list that specifies what to plot.
+
+        Parameters
+        ----------
+        stdin_list : list[str]
+            Input list for interactive orca_plot session
+        suffix : str, default ".gbw"
+            Determines the suffix of the gbw file to use.
+        timeout : int, default: = -1
+            Timeout in seconds to wait for ORCA process.
+            If value is smaller than zero, wait indefinitely.
+
+        Raises
+        ----------
+        ValueError
+            If the input string is empty a ValueError is raised.
+        FileNotFoundError
+            If the gbwfile {basename}{suffix} is not found.
+        """
+        runner = self._create_runner()
+        gbwfile = self.working_dir / f"{self.basename}{suffix}"
+
+        # if no input for orca_plot is given
+        if not stdin_list:
+            raise ValueError("No input (stdin_list) supplied for orca_plot, but input is required!")
+
+        runner.run_orca_plot(gbwfile, stdin_list, timeout=timeout)
+
+    def plot_mo(
+        self,
+        index: StrictNonNegativeInt,
+        /,
+        *,
+        operator: StrictNonNegativeInt = 0,
+        resolution: StrictNonNegativeInt = 40,
+        timeout: int = 300,
+    ) -> CubeOutput | None:
+        """
+        Generates and returns the cube file for a molecular orbital by running the orca_plot binary.
+        **Attention:** will terminate orca_plot after 300 seconds by default. If you plot something large you will have
+        to adapt this threshold or set it to -1 for waiting indefinitely!
+
+        Parameters
+        ----------
+        index: StrictNonNegativeInt
+            Index of the MO to plot.
+        operator : StrictNonNegativeInt, default=0
+            Operator of the MO, alpha MOs are indicated by 0 and beta MOs by 1.
+        resolution: StrictNonNegativeInt, default=40
+            Resolution of the generated cube file. Higher numbers result in smoother plots, but also in longer orca_plot
+            run time and a larger cube file.
+        timeout: int, default = 300
+            Time after which orca_plot will be stopped. 300 seconds should be sufficient for most MOs but when something
+            large is plotted set this to a larger value or to -1 for waiting indefinitely long.
+
+        Returns
+        -------
+        CubeOutput | None
+            Returns the cube output object or returns None if the cube file cannot be retrieved.
+        """
+
+        operator_list = ["a", "b"]
+
+        # > Define input string for orca_plot.
+        # > If anything goes wrong orca_plot should exit.
+        stdin_list = [
+            "1",  # Select type of plot
+            "1",  # Enter MO plot
+            "2",  # Select index of orbital
+            str(index),  # Enter index
+            "3",  # Select alpha/beta operator
+            str(operator),  # Enter alpha/beta (0/1)
+            "4",  # Select the resolution (grid size) settings
+            str(resolution),  # Enter resolution
+            "5",  # Select the output format
+            "7",  # Request cube file format
+            "11",  # Perform the plotting
+            "12",  # Exit the program
+        ]
+        self.run_orca_plot(stdin_list, timeout=timeout)
+
+        # > get the resulting cube file as string
+        cube_file = self.working_dir / f"{self.basename}.mo{index}{operator_list[operator]}.cube"
+
+        if not cube_file.is_file():
+            return None
+
+        return CubeOutput(cube_file)
+
+    def plot_density(
+        self, /, *, resolution: StrictNonNegativeInt = 40, timeout: int = 600, suffix: str = ".scfp"
+    ) -> CubeOutput | None:
+        """
+        Generates and returns the cube file for the density by running the orca_plot binary.
+        **Attention:** will terminate orca_plot after 600 seconds by default. If you plot something large you will have
+        to adapt this threshold or set it to -1 for waiting indefinitely!
+
+        Parameters
+        ----------
+        resolution: StrictNonNegativeInt, default=40
+            Resolution of the generated cube file. Higher numbers result in smoother plots, but also in longer orca_plot
+            run time and a larger cube file.
+        timeout: int, default = 600
+            Time after which orca_plot will be stopped. 600 seconds should be sufficient for most MOs but when something
+            large is plotted set this to a larger value or to -1 for waiting indefinitely long.
+        suffix: str, default = ".scfp"
+            suffix for selecting different densities, e.g., FOD via ".scfp_fod".
+        Returns
+        -------
+        CubeOutput | None
+            Returns the cube output object or returns None if the cube file cannot be retrieved.
+        """
+        # > Define input string for orca_plot.
+        # > If anything goes wrong orca_plot should exit.
+        stdin_list = [
+            "1",  # Select type of plot
+            "2",  # Enter density plot
+            "n",  # Do not use the default density
+            f"{self.basename}{suffix}",  # Select density file
+            "4",  # Select the resolution (grid size) settings
+            str(resolution),  # Enter resolution
+            "5",  # Select the output format
+            "7",  # Request cube file format
+            "11",  # Perform the plotting
+            "12",  # Exit the program
+        ]
+        self.run_orca_plot(stdin_list, timeout=timeout)
+
+        # > get the resulting cube file as string
+        cube_file = self.working_dir / f"{self.basename}.eldens.cube"
+
+        if not cube_file.is_file():
+            return None
+
+        return CubeOutput(cube_file)
+
+    def plot_spin_density(
+        self,
+        /,
+        *,
+        resolution: StrictNonNegativeInt = 40,
+        timeout: int = 600,
+    ) -> CubeOutput | None:
+        """
+        Generates and returns the cube file for the spin-density by running the orca_plot binary. Note that for RHF/RKS
+        calculations the density will be returned.
+        **Attention:** will terminate orca_plot after 600 seconds by default. If you plot something large you will have
+        to adapt this threshold or set it to -1 for waiting indefinitely!
+
+        Parameters
+        ----------
+        resolution: StrictNonNegativeInt, default=40
+            Resolution of the generated cube file. Higher numbers result in smoother plots, but also in longer orca_plot
+            run time and a larger cube file.
+        timeout: int, default = 600
+            Time after which orca_plot will be stopped. 600 seconds should be sufficient for most MOs but when something
+            large is plotted set this to a larger value or to -1 for waiting indefinitely long.
+
+        Returns
+        -------
+        CubeOutput | None
+            Returns the cube output object or returns None if the cube file cannot be retrieved.
+        """
+        # > Define input string for orca_plot.
+        # > If anything goes wrong orca_plot should exit.
+        stdin_list = [
+            "1",  # Select type of plot
+            "3",  # Enter spin density plot
+            "y",  # Use default density
+            "4",  # Select the resolution (grid size) settings
+            str(resolution),  # Enter resolution
+            "5",  # Select the output format
+            "7",  # Request cube file format
+            "11",  # Perform the plotting
+            "12",  # Exit the program
+        ]
+        self.run_orca_plot(stdin_list, timeout=timeout)
+
+        # > get the resulting cube file as string
+        cube_file = self.working_dir / f"{self.basename}.spindens.cube"
+
+        if not cube_file.is_file():
+            return None
+
+        return CubeOutput(cube_file)
 
     def _safe_get(self, *attrs: str | int) -> Any | None:
         """

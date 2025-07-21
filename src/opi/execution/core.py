@@ -9,7 +9,6 @@ R:
 
 import json
 import os
-import shlex
 import shutil
 import subprocess
 from contextlib import nullcontext
@@ -147,6 +146,7 @@ class Runner:
         args: Sequence[str] = (),
         /,
         *,
+        stdin_str: str | None = None,
         stdout: Path | None = None,
         stderr: Path | None = None,
         silent: bool = True,
@@ -163,6 +163,8 @@ class Runner:
             Name of ORCA binary to be executed. Path is automatically resolved based on configuration.
         args : Sequence[str], default: ()
             Command line arguments to pass to ORCA binary.
+        stdin_str: str | None = None
+            String to be passed to stdin.
         stdout : Path | None, default: None
             Dump STDOUT to a file.
         stderr : Path | None, default: None
@@ -235,6 +237,7 @@ class Runner:
             with outfile as f_out, errfile as f_err:
                 proc = subprocess.run(
                     cmd,
+                    input=stdin_str,
                     stdout=f_out,
                     stderr=f_err,
                     cwd=cwd,
@@ -280,12 +283,77 @@ class Runner:
         arguments = [inpfile.name]
         if extra_args:
             # > All extra arguments are passed as second argument to ORCA.
-            arguments += [shlex.join(extra_args)]
+            arguments += list(extra_args)
 
         # Run the Orca calculation
         self.run(
             OrcaBinary.ORCA,
-            [inpfile.name],
+            arguments,
+            stdout=outfile,
+            stderr=errfile,
+            silent=silent,
+            timeout=timeout,
+        )
+
+    def run_orca_plot(
+        self,
+        gbwfile: Path,
+        stdin_list: list[str],
+        /,
+        *extra_args: str,
+        silent: bool = True,
+        timeout: int = -1,
+    ) -> None:
+        """
+        Executes the orca_plot binary in the interactive mode and passes the gbw path, an input string, and extra
+        arguments to the binary. Note that currently only the interactive mode (orca_plot (gbw) -i) is supported.
+
+        Parameters
+        ----------
+        gbwfile : Path
+            Path to an ORCA geometry, basis set, wavefunction (gbw) file.
+        stdin_list : list[str]
+            Input string handed to stdin of orca_plot.
+        *extra_args: str
+            Additional arguments passed to orca_plot.
+        silent : bool, default: True
+            Capture and discard STDOUT and STDERR.
+        timeout : int, default: -1
+            Optional timeout in seconds to wait for process to complete.
+
+        Raises
+        ----------
+        FileNotFoundError
+            If the gbw file for plotting does not exist.
+        ValueError
+            If no stdin_list for the input of orca_plot is provided.
+        """
+        if not gbwfile.is_file():
+            raise FileNotFoundError(f"GBW file {gbwfile} does not exist")
+
+        if not stdin_list:
+            raise ValueError("stdin_list is required but was empty or not provided.")
+
+        # Sets the output and error file from the gbwfile.
+        outfile = gbwfile.with_suffix(".plot.out")
+        errfile = gbwfile.with_suffix(".plot.err")
+
+        # > CLI arguments
+        arguments = [gbwfile.name]
+        # > Request interactive plot mode by adding "-i"
+        arguments += ["-i"]
+        if extra_args:
+            # > All extra arguments are passed as third argument to orca_plot.
+            arguments += list(extra_args)
+
+        # > Generate stdin string from stdin list
+        stdin_str = "\n".join(stdin_list) + "\n"
+
+        # Run orca_plot
+        self.run(
+            OrcaBinary.ORCA_PLOT,
+            arguments,
+            stdin_str=stdin_str,
             stdout=outfile,
             stderr=errfile,
             silent=silent,
