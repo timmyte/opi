@@ -162,22 +162,16 @@ class Calculator:
     # &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
     # METHODS
     # &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
-    def write_input(self, *, copy_structure: bool = True) -> None:
+    def write_input(self) -> None:
         """
         Function to create the ORCA input file `.inp`.
-        Optional, also copies the primary structure file into the working directory.
-
-        Parameters
-        ----------
-        copy_structure : bool, default: True
-            True: If the `Calculator.structure` has the base type `BaseStructureFile`, copy the file into working dir.
-            False: Don't copy the file.
 
         Raises
         ------
         RuntimeError
           * When `.inp` cannot be written.
-          * When the structure file cannot be copied.
+        ValueError
+          * When the `moinp` path is given, and it is not a subpath of the working directory.
         """
 
         assert self.working_dir
@@ -221,7 +215,7 @@ class Calculator:
                 if (ncores := input_param.ncores) is not None:
                     inp.write(f"%pal\n    nprocs {ncores:d}\nend\n")
                 if (moinp := input_param.moinp) is not None:
-                    inp.write(f"%moinp {moinp}\n")
+                    inp.write(f'%moinp "{moinp.relative_to(self.working_dir)}"\n')
 
                 # ---------------------------------
                 # > Block Options: Before coords
@@ -243,12 +237,10 @@ class Calculator:
                 # > Coords block
                 # ---------------------------------
                 if self.structure:
-                    if copy_structure and isinstance(self.structure, BaseStructureFile):
-                        try:
-                            self.structure.copy_to(self.working_dir)
-                        except OSError as err:
-                            raise RuntimeError(str(err)) from err
-                    inp.write(f"\n{self.structure.format_orca()}\n")
+                    if isinstance(self.structure, BaseStructureFile):
+                        inp.write(f"{self.structure.format_orca(self.working_dir)} ")
+                    else:
+                        inp.write(f"\n{self.structure.format_orca()}\n")
 
                 # ---------------------------------
                 # > Block options: After coords
