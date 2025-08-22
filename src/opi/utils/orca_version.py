@@ -15,7 +15,7 @@ class OrcaVersion(Version):  # type: ignore
         r"\.(?P<minor>\d+)"  # minor version
         r"("
         r"\.(?P<micro>\d+)"  # micro version [optional]
-        r"(-f\.(?P<bugfix>\d+))?"  # bugfix version [optional]
+         r"(-(?P<bugfix>f\.\d+))?"  # bugfix version [optional]
         r")?",
         re.VERBOSE | re.IGNORECASE,
     )
@@ -43,7 +43,7 @@ class OrcaVersion(Version):  # type: ignore
             minor = int(mmatch.group("minor"))
             # > Patch level has to be a number. Cannot be None.
             patch = int(g) if (g := mmatch.group("micro")) else 0
-            prerelease = int(g) if (g := mmatch.group("bugfix")) else None
+            prerelease = g.split(".") if (g := mmatch.group("bugfix")) else None
 
             return cls(
                 major=major,
