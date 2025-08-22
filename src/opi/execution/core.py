@@ -379,7 +379,7 @@ class Runner:
 
         try:
             # > May raise subprocess.TimeoutExpired
-            orca_proc = self.run(OrcaBinary.ORCA, capture=True, timeout=5)
+            orca_proc = self.run(OrcaBinary.ORCA, ["--version"], capture=True, timeout=5)
 
             # > Pleasing type checker
             assert isinstance(orca_proc, CompletedProcess)
@@ -413,13 +413,20 @@ class Runner:
 
         orca_vers = self.get_version()
 
+        # > Path as string to ORCA binary
+        try:
+            orca_bin_str = f"\nORCA binary: {self.get_orca_binary(OrcaBinary.ORCA)}"
+        except FileNotFoundError:
+            orca_bin_str = ""
+
         if orca_vers is None:
             if ignore_errors:
                 return None
             else:
                 raise RuntimeError(
-                    f"Could not determine version of ORCA binary. Make sure ORCA is installed and configured correctly."
-                    f" Minimally required ORCA version: {ORCA_MINIMAL_VERSION}"
+                    f"Could not determine version of ORCA binary."
+                    f" Make sure ORCA is installed and configured correctly."
+                    f" Minimally required ORCA version: {ORCA_MINIMAL_VERSION}{orca_bin_str}"
                 )
 
         elif not check_minimal_version(orca_vers):
@@ -427,7 +434,8 @@ class Runner:
                 return False
             else:
                 raise RuntimeError(
-                    f"ORCA version {orca_vers} is not supported. Make sure to install at least version: {ORCA_MINIMAL_VERSION}"
+                    f"ORCA version {orca_vers} is not supported. Make sure to install at least version:"
+                    f" {ORCA_MINIMAL_VERSION}{orca_bin_str}"
                 )
         else:
             return True
