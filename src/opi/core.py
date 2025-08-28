@@ -58,6 +58,7 @@ class Calculator:
             Optional working direction. Is passed on to `Runner` and `Output` classes.
         version_check : bool, default: True
             Check ORCA's binary version upon initialization.
+            Important: May create significant computational overhead if many `Calculators` are initialized concurrently.
         """
 
         # -----------------------------

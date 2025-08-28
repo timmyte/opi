@@ -401,7 +401,7 @@ class Runner:
         Returns
         -------
         bool :
-            True: Ff version is compatible.
+            True: If version is compatible.
             False: If version is not compatible.
         None :
             If version could not be determined.
