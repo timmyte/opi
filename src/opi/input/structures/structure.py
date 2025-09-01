@@ -130,6 +130,35 @@ class Structure:
             raise ValueError(f"{self.__class__.__name__}.multiplicity: must be positive")
         self._multiplicity = value
 
+    @property
+    def nelectrons(self) -> int:
+        """
+        Returns the number of electrons based on the cardinal numbers of atoms in the structure and the overall
+        molecular charge. Note that the number of electrons returned by this function can be negative and should be
+        checked!
+
+        Returns
+        ----------
+        nelectrons : int
+            Returns the number of electrons for the structure. Can be negative!
+        """
+        nelectrons = 0
+        for atom in self.atoms:
+            if isinstance(atom, Atom):
+                nelectrons += atom.element.atomic_number
+        nelectrons -= self.charge
+        return nelectrons
+
+    @property
+    def nelec_is_odd(self) -> bool:
+        """Returns a boolean indicating if the number of electrons is odd. Does not check for negative electrons."""
+        return self.nelectrons % 2 == 1
+
+    @property
+    def nelec_is_even(self) -> bool:
+        """Returns a boolean indicating if the number of electrons is even. Does not check for negative electrons."""
+        return self.nelectrons % 2 == 0
+
     @classmethod
     def combine_molecules(cls, structure1: "Structure", structure2: "Structure") -> "Structure":
         """
