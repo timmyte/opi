@@ -3,6 +3,8 @@ name: PR main (uv + nox)
 on:
   pull_request:
     branches: [ "main" ]
+  workflow_dispatch:
+
 
 jobs:
   nox:
