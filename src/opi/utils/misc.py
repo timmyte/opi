@@ -13,7 +13,7 @@ FLOAT_REGEX: str = r"[+-]?((\d+(\.\d*)?)|(\.\d+))"
 
 def eprint(*msgs: Sequence[Any], **kwargs: Mapping[str, Any]) -> None:
     """
-    Print to directly to STDERR.
+    Print directly to STDERR.
 
     Parameters
     ----------
