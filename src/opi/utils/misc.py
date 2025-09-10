@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence, cast
 
 from opi import ORCA_MINIMAL_VERSION
+from opi.lib.orca_binary import OrcaBinary
 from opi.utils.orca_version import OrcaVersion
 
 FLOAT_REGEX: str = r"[+-]?((\d+(\.\d*)?)|(\.\d+))"
@@ -188,3 +189,14 @@ def check_minimal_version(version: OrcaVersion, /) -> bool:
     version : OrcaVersion
     """
     return cast(bool, version >= ORCA_MINIMAL_VERSION)
+
+
+def resolve_binary_name(name: str | OrcaBinary, /) -> str:
+    """
+    Determine the name of binary on the current OS.
+    On Windows we add ".exe" the stem of binary name, otherwise the name is return unaltered.
+    """
+    if is_windows():
+        return name + ".exe"
+    else:
+        return name
