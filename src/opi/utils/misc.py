@@ -1,4 +1,5 @@
 import os
+import platform
 import sys
 from pathlib import Path
 from typing import Any, Mapping, Sequence, cast
@@ -143,25 +144,39 @@ def get_package_name() -> str:
     return pkg_name
 
 
+def get_os_name() -> str:
+    """
+    Return the name of the operating system as return by `uname` (Posix) or `ver` (Windows).
+    """
+    return platform.system()
+
+
+def is_os(os_name: str, /) -> bool:
+    """
+    Check if name of the operating system starts with `os_name`.
+    """
+    return get_os_name().lower().startswith(os_name)
+
+
 def is_linux() -> bool:
     """
     Return if current OS is Linux.
     """
-    return sys.platform == "linux"
+    return is_os("linux")
 
 
 def is_windows() -> bool:
     """
     Return if current OS is Windows.
     """
-    return sys.platform == "windows"
+    return is_os("windows")
 
 
 def is_mac() -> bool:
     """
     Return if current OS is Mac OS X.
     """
-    return sys.platform == "darwin"
+    return is_os("darwin")
 
 
 def check_minimal_version(version: OrcaVersion, /) -> bool:
