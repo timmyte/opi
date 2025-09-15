@@ -11,7 +11,7 @@ class OrcaBinary(StrEnum):
     ORCA_2AIM = "orca_2aim"
     ORCA_2MKL = "orca_2mkl"
     ORCA_CRYSTALPREP = "orca_crystalprep"
-    ORCA_JFT = "orca_lft"
+    ORCA_LFT = "orca_lft"
     ORCA_LOC = "orca_loc"
     ORCA_MAPSPC = "orca_mapspc"
     ORCA_MERGEFRAG = "orca_mergefrag"
