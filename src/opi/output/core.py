@@ -2198,6 +2198,115 @@ class Output:
         else:
             return None
 
+    def get_frequencies(
+        self, *, index: int = -1, threshold: float | None = None
+    ) -> dict[int, float] | None:
+        """
+        Returns all vibrational frequencies (in cm⁻¹). Requires a frequency calculation (FREQ or NUMFREQ).
+
+        Parameters
+        ----------
+        index : int, default: -1
+            Index of the geometry for which the frequencies should be returned. The default -1 refers to the final geometry.
+            Silently ignores if the requested index is not available and returns None. Note that in typical ORCA jobs
+            frequencies are only available for the final geometry.
+        threshold : float | None, default: None
+            Frequencies more negative than ``-threshold`` (in cm⁻¹) are returned.
+            If threshold is None no frequencies will be sorted out.
+
+        Returns
+        ----------
+        frequencies : dict[int, float] | None
+            Dictionary mapping 1-based mode index to vibrational frequency in cm⁻¹, or None if no frequency
+            data is found.
+        """
+        # > "thermochemistry_energies" contains a list, but there should always be only one index
+        freq_list = self._safe_get(
+            "results_properties", "geometries", index, "thermochemistry_energies", 0, "freq"
+        )
+
+        if freq_list is None:
+            return None
+
+        freq_list = cast(list[list[float]], freq_list)
+
+        return {
+            i + 1: inner[0]
+            for i, inner in enumerate(freq_list)
+            if threshold is None or inner[0] < -threshold
+        }
+
+    def get_imaginary_frequencies(self, *, threshold: float = 0.0) -> dict[int, float] | None:
+        """
+        Returns only the imaginary (negative) vibrational frequencies (in cm⁻¹). Requires a frequency
+        calculation (FREQ or NUMFREQ).
+
+        threshold : float, default: 0.0
+            Frequencies more negative than ``-threshold`` (in cm⁻¹) are considered imaginary.
+            A positive threshold ignores small negative frequencies that may arise from numerical
+            noise, e.g. a threshold of 50.0 treats any frequency above -50.0 cm⁻¹ as real.
+
+        Returns
+        ----------
+        imaginary_frequencies : dict[int, float] | None
+            Dictionary mapping 1-based mode index to imaginary frequency in cm⁻¹. Returns None if no frequency
+            data is present, and an empty dict if all frequencies are real.
+        """
+        return self.get_frequencies(threshold=threshold)
+
+    def is_pes_minimum(self, *, threshold: float = 0.0) -> bool | None:
+        """
+        Returns True if the structure is a PES minimum, i.e. all vibrational frequencies are real
+        within the given threshold. Requires a frequency calculation (FREQ or NUMFREQ).
+
+        Parameters
+        ----------
+        threshold : float, default: 0.0
+            Frequencies more negative than ``-threshold`` (in cm⁻¹) are considered imaginary.
+            A positive threshold ignores small negative frequencies that may arise from numerical
+            noise, e.g. a threshold of 50.0 treats any frequency above -50.0 cm⁻¹ as real.
+
+        Returns
+        ----------
+        is_minimum : bool | None
+            True if no frequency lies below ``-threshold``, False if at least one does, or None
+            if no frequency data is available.
+        """
+        imaginary_frequencies = self.get_imaginary_frequencies(threshold=threshold)
+
+        if imaginary_frequencies is None:
+            return None
+
+        # > Minimum if no imaginary_frequency is present
+        return not bool(imaginary_frequencies)
+
+    def is_pes_transition_state(self, *, threshold: float = 0.0) -> bool | None:
+        """
+        Returns True if the structure is a first-order saddle point (transition state), i.e.
+        exactly one vibrational frequency lies below ``-threshold``. Requires a frequency calculation
+        (FREQ or NUMFREQ).
+
+        Parameters
+        ----------
+        threshold : float, default: 0.0
+            Frequencies more negative than ``-threshold`` (in cm⁻¹) are considered imaginary.
+            A positive threshold ignores small negative frequencies that may arise from numerical
+            noise, e.g. a threshold of 50.0 treats any frequency above -50.0 cm⁻¹ as real.
+
+        Returns
+        ----------
+        is_transition_state : bool | None
+            True if exactly one frequency lies below ``-threshold``, False otherwise, or None
+            if no frequency data is available.
+        """
+        imaginary_frequencies = self.get_imaginary_frequencies(threshold=threshold)
+
+        if imaginary_frequencies is None:
+            return None
+
+        # > Transition state if only one imaginary mode is present
+        return len(imaginary_frequencies) == 1
+
     def recreate_gbw_results(self, config_dict: dict[str, Any], gbw_index: int = 0, /) -> None:
         """
         Function for recreating a specific gbw-JSON file with a config dict. Silently does nothing if `gbw_index` is
